@@ -1,0 +1,13 @@
+# Bundler
+vendor/bundle
+.bundle/
+
+# RubyGems build artifacts
+*.gem
+pkg/
+
+# Test coverage
+coverage/
+
+# OS
+.DS_Store

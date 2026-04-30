@@ -1,0 +1,15 @@
+# frozen_string_literal: true
+
+require_relative "kamal_pull_preview/version"
+require_relative "kamal_pull_preview/errors"
+require_relative "kamal_pull_preview/config"
+require_relative "kamal_pull_preview/state"
+require_relative "kamal_pull_preview/executor"
+require_relative "kamal_pull_preview/destination_generator"
+require_relative "kamal_pull_preview/deployer"
+require_relative "kamal_pull_preview/cleaner"
+require_relative "kamal_pull_preview/cli"
+
+module KamalPullPreview
+  # Entry point — see CLI for available commands.
+end
