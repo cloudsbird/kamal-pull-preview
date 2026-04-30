@@ -55,52 +55,53 @@ module KamalPullPreview
       exit(1)
     end
 
-    desc "init", "Scaffold kamal-pull-preview configuration files in the current directory"
+    desc "init", "Generate kamal-pull-preview.yml and GitHub Actions workflow in the current project"
     def init
-      templates_dir = File.expand_path("../../../templates", __dir__)
+      config_dest   = File.join(Dir.pwd, "kamal-pull-preview.yml")
+      workflow_dir  = File.join(Dir.pwd, ".github", "workflows")
+      workflow_dest = File.join(workflow_dir, "pull-preview.yml")
 
-      copy_template(
-        File.join(templates_dir, "kamal-pull-preview.yml.erb"),
-        "kamal-pull-preview.yml",
-      )
+      config_template  = File.join(__dir__, "..", "..", "templates", "kamal-pull-preview.yml.erb")
+      workflow_template = File.join(__dir__, "..", "..", "templates", "github-action.yml.erb")
 
-      FileUtils.mkdir_p(".github/workflows")
-      copy_template(
-        File.join(templates_dir, "github-action.yml.erb"),
-        ".github/workflows/pull-preview.yml",
-      )
+      _write_template(src: config_template,  dest: config_dest,   label: "kamal-pull-preview.yml")
+      FileUtils.mkdir_p(workflow_dir)
+      _write_template(src: workflow_template, dest: workflow_dest, label: ".github/workflows/pull-preview.yml")
 
-      $stdout.puts "\e[32mDone! Next steps:\e[0m"
-      $stdout.puts "  1. Edit kamal-pull-preview.yml with your host, domain, and registry."
-      $stdout.puts "  2. Add secrets referenced in .github/workflows/pull-preview.yml."
-      $stdout.puts "  3. Commit both files and open a pull request to trigger a preview."
+      puts "\n\e[32mDone!\e[0m Next steps:"
+      puts "  1. Edit kamal-pull-preview.yml with your host, domain, and registry"
+      puts "  2. Commit .github/workflows/pull-preview.yml"
+      puts "  3. Set KAMAL_REGISTRY_PASSWORD in your repo secrets"
     end
 
-    desc "cleanup", "Remove all expired pull-request preview environments"
+    desc "cleanup", "Remove all previews that have exceeded their TTL"
     def cleanup
-      count = Cleaner.new.cleanup_expired
-      if count > 0
-        $stdout.puts "\e[32mRemoved #{count} expired preview#{count == 1 ? "" : "s"}.\e[0m"
+      removed = Cleaner.new.cleanup_expired
+
+      if removed.zero?
+        puts "No expired previews found."
       else
-        $stdout.puts "No expired previews found."
+        puts "\e[32mRemoved #{removed} expired preview(s).\e[0m"
       end
-    rescue DeployError, ConfigError => e
-      $stderr.puts "\e[31mError: #{e.message}\e[0m"
-      exit(1)
+    rescue ConfigError => e
+      puts "\e[31mConfig error: #{e.message}\e[0m"
+      exit 1
+    rescue DeployError => e
+      puts "\e[31mDeploy error: #{e.message}\e[0m"
+      exit 1
     end
 
     private
 
-    def copy_template(src, dest)
+    def _write_template(src:, dest:, label:)
       if File.exist?(dest)
-        $stdout.puts "\e[33mSkipping #{dest} (already exists).\e[0m"
-        return
+        puts "\e[33mSkipped\e[0m  #{label} (already exists)"
+      else
+        require "erb"
+        content = ERB.new(File.read(src)).result(binding)
+        File.write(dest, content)
+        puts "\e[32mCreated\e[0m  #{label}"
       end
-
-      require "erb"
-      content = ERB.new(File.read(src)).result(binding)
-      File.write(dest, content)
-      $stdout.puts "\e[32mCreated #{dest}\e[0m"
     end
   end
 end

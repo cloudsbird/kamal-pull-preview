@@ -1,16 +1,19 @@
 # Changelog
 
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+
+## [Unreleased]
+
 ## [0.1.0] - 2026-04-30
 
 ### Added
-
-- Initial release of kamal-pull-preview
-- `deploy` CLI command to spin up per-PR preview environments via Kamal 2.x
-- `remove` CLI command to tear down a preview environment
-- `list` CLI command to display all active previews in a table
-- `init` CLI command to scaffold configuration files
-- `cleanup` CLI command to remove expired preview environments
-- SQLite-backed state tracking (`~/.kamal-pull-preview/state.db`)
-- Destination-override YAML generation for Kamal 2.x (`.kamal/destinations/pr-N.yml`)
-- Configurable TTL, max-concurrent-previews, and DB strategy via `kamal-pull-preview.yml`
-- GitHub Actions workflow template for automated deploy/remove on PR events
+- `deploy` command: generates Kamal 2.x destination override and deploys a PR preview
+- `remove` command: tears down a PR preview and cleans up destination file
+- `list` command: displays all active previews from SQLite state store
+- SQLite-backed state tracking at `~/.kamal-pull-preview/state.db`
+- Kamal 2.x destination override generator (`.kamal/destinations/pr-{N}.yml`)
+- `kamal-pull-preview.yml` configuration file support
+- GitHub Actions workflow template at `templates/github-action.yml.erb`
+- RSpec test suite with CI matrix for Ruby 3.2 and 3.3
