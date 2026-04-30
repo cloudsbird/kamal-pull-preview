@@ -28,8 +28,7 @@ module KamalPullPreview
 
     # Remove the preview for the given PR.
     def remove(pr_number:)
-      # TODO: handle the case where the destination file no longer exists gracefully
-      @generator.generate(pr_number: pr_number) unless destination_exists?(pr_number)
+      raise DeployError, "No destination file found for PR ##{pr_number}. Was it ever deployed?" unless destination_exists?(pr_number)
 
       Executor.execute("kamal", "remove", "-d", "pr-#{Integer(pr_number)}")
 
