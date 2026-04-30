@@ -1,0 +1,15 @@
+{
+    "image": "mcr.microsoft.com/devcontainers/ruby:trixie",
+    "features": {
+        "ghcr.io/devcontainers/features/docker-in-docker:2.16.1": {
+            "version": "latest",
+            "moby": false
+        },
+        "ghcr.io/devcontainers/features/node:2.0.0": {
+            "version": "24"
+        }
+    },
+    "mounts": [
+        "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
+    ]
+}
