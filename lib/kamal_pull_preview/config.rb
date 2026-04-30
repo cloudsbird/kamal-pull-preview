@@ -14,6 +14,8 @@ module KamalPullPreview
       "db_strategy"          => "none",
     }.freeze
 
+    VALID_DB_STRATEGIES = %w[none sqlite shared_schema].freeze
+
     FIELDS = %i[
       host
       domain
@@ -27,7 +29,7 @@ module KamalPullPreview
     ConfigStruct = Struct.new(*FIELDS, keyword_init: true)
 
     # Load and validate config from the current directory.
-    # Raises ConfigError if required keys are missing.
+    # Raises ConfigError if required keys are missing or invalid.
     def self.load(path: CONFIG_FILE)
       raw = begin
         YAML.safe_load(File.read(path), permitted_classes: []) || {}
@@ -44,15 +46,38 @@ module KamalPullPreview
         raise ConfigError, "Missing required config key: #{key}" if data[key].nil? || data[key].to_s.empty?
       end
 
+      validate_format!(data)
+
       ConfigStruct.new(
-        host:               data["host"],
-        domain:             data["domain"],
+        host:               data["host"].to_s.strip,
+        domain:             data["domain"].to_s.strip,
         ttl_hours:          data["ttl_hours"].to_i,
         idle_stop_minutes:  data["idle_stop_minutes"].to_i,
         max_concurrent:     data["max_concurrent"].to_i,
-        db_strategy:        data["db_strategy"],
-        registry:           data["registry"],
+        db_strategy:        data["db_strategy"].to_s.strip,
+        registry:           data["registry"].to_s.strip,
       ).freeze
+    end
+
+    def self.validate_format!(data)
+      %w[host domain].each do |key|
+        value = data[key].to_s.strip
+        if value.include?(" ")
+          raise ConfigError, "Invalid #{key}: contains spaces (#{value})"
+        end
+      end
+
+      registry = data["registry"].to_s.strip
+      if registry.end_with?("/")
+        raise ConfigError, "Invalid registry: should not end with a slash (#{registry})"
+      end
+
+      db_strategy = data["db_strategy"].to_s.strip
+      unless VALID_DB_STRATEGIES.include?(db_strategy)
+        raise ConfigError,
+              "Invalid db_strategy: '#{db_strategy}'. " \
+              "Must be one of: #{VALID_DB_STRATEGIES.join(', ')}"
+      end
     end
 
     # Returns an example YAML string that can be written to kamal-pull-preview.yml.

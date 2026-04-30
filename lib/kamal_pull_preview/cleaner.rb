@@ -18,7 +18,7 @@ module KamalPullPreview
       expired.each do |preview|
         @deployer.remove(pr_number: preview["pr_number"])
       rescue DeployError => e
-        $stderr.puts "\e[33mWarning: could not remove PR ##{preview["pr_number"]}: #{e.message}\e[0m"
+        logger.warn("Could not remove PR ##{preview["pr_number"]}: #{e.message}")
       end
 
       expired.size
@@ -36,6 +36,12 @@ module KamalPullPreview
           r["deployed_at"],
         ]
       end
+    end
+
+    private
+
+    def logger
+      KamalPullPreview.logger
     end
   end
 end

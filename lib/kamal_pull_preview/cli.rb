@@ -5,9 +5,22 @@ require "fileutils"
 
 module KamalPullPreview
   class CLI < Thor
+    # Global flags
+    class_option :dry_run, type: :boolean, default: false, desc: "Print commands without executing them"
+
     # Ensure Thor exits with a non-zero status on failure.
     def self.exit_on_failure?
       true
+    end
+
+    no_commands do
+      def invoke_command(command, *args)
+        Executor.dry_run = options[:dry_run]
+        if options[:dry_run]
+          logger.info("=== DRY RUN MODE — no commands will be executed ===")
+        end
+        super
+      end
     end
 
     desc "deploy", "Deploy a pull-request preview environment"
@@ -21,7 +34,7 @@ module KamalPullPreview
 
       url = Deployer.new.deploy(pr_number: pr_number, sha: sha, repo: repo)
       $stdout.puts "\e[32mPreview deployed: #{url}\e[0m"
-    rescue DeployError, ConfigError => e
+    rescue DeployError, ConfigError, StateError => e
       $stderr.puts "\e[31mError: #{e.message}\e[0m"
       exit(1)
     end
@@ -33,7 +46,7 @@ module KamalPullPreview
 
       Deployer.new.remove(pr_number: pr_number)
       $stdout.puts "\e[32mPreview for PR ##{pr_number} removed.\e[0m"
-    rescue DeployError, ConfigError => e
+    rescue DeployError, ConfigError, StateError => e
       $stderr.puts "\e[31mError: #{e.message}\e[0m"
       exit(1)
     end
@@ -50,13 +63,18 @@ module KamalPullPreview
       header = %w[PR SHA URL Status DeployedAt]
       table  = TTY::Table.new(header: header, rows: rows)
       $stdout.puts table.render(:unicode, padding: [0, 1])
-    rescue DeployError, ConfigError => e
+    rescue DeployError, ConfigError, StateError => e
       $stderr.puts "\e[31mError: #{e.message}\e[0m"
       exit(1)
     end
 
     desc "init", "Generate kamal-pull-preview.yml and GitHub Actions workflow in the current project"
     def init
+      if options[:dry_run]
+        logger.info("[dry-run] Would create kamal-pull-preview.yml and .github/workflows/pull-preview.yml")
+        return
+      end
+
       config_dest   = File.join(Dir.pwd, "kamal-pull-preview.yml")
       workflow_dir  = File.join(Dir.pwd, ".github", "workflows")
       workflow_dest = File.join(workflow_dir, "pull-preview.yml")
@@ -68,10 +86,10 @@ module KamalPullPreview
       FileUtils.mkdir_p(workflow_dir)
       _write_template(src: workflow_template, dest: workflow_dest, label: ".github/workflows/pull-preview.yml")
 
-      puts "\n\e[32mDone!\e[0m Next steps:"
-      puts "  1. Edit kamal-pull-preview.yml with your host, domain, and registry"
-      puts "  2. Commit .github/workflows/pull-preview.yml"
-      puts "  3. Set KAMAL_REGISTRY_PASSWORD in your repo secrets"
+      $stdout.puts "\n\e[32mDone!\e[0m Next steps:"
+      $stdout.puts "  1. Edit kamal-pull-preview.yml with your host, domain, and registry"
+      $stdout.puts "  2. Commit .github/workflows/pull-preview.yml"
+      $stdout.puts "  3. Set KAMAL_REGISTRY_PASSWORD in your repo secrets"
     end
 
     desc "cleanup", "Remove all previews that have exceeded their TTL"
@@ -79,15 +97,15 @@ module KamalPullPreview
       removed = Cleaner.new.cleanup_expired
 
       if removed.zero?
-        puts "No expired previews found."
+        $stdout.puts "No expired previews found."
       else
-        puts "\e[32mRemoved #{removed} expired preview(s).\e[0m"
+        $stdout.puts "\e[32mRemoved #{removed} expired preview(s).\e[0m"
       end
-    rescue ConfigError => e
-      puts "\e[31mConfig error: #{e.message}\e[0m"
+    rescue ConfigError, StateError => e
+      $stdout.puts "\e[31mConfig error: #{e.message}\e[0m"
       exit 1
     rescue DeployError => e
-      puts "\e[31mDeploy error: #{e.message}\e[0m"
+      $stdout.puts "\e[31mDeploy error: #{e.message}\e[0m"
       exit 1
     end
 
@@ -95,13 +113,17 @@ module KamalPullPreview
 
     def _write_template(src:, dest:, label:)
       if File.exist?(dest)
-        puts "\e[33mSkipped\e[0m  #{label} (already exists)"
+        $stdout.puts "\e[33mSkipped\e[0m  #{label} (already exists)"
       else
         require "erb"
         content = ERB.new(File.read(src)).result(binding)
         File.write(dest, content)
-        puts "\e[32mCreated\e[0m  #{label}"
+        $stdout.puts "\e[32mCreated\e[0m  #{label}"
       end
+    end
+
+    def logger
+      KamalPullPreview.logger
     end
   end
 end

@@ -15,12 +15,16 @@ module KamalPullPreview
       @db = SQLite3::Database.new(db_path)
       @db.results_as_hash = true
       migrate!
+    rescue SQLite3::CorruptException => e
+      raise StateError, "SQLite database is corrupt (#{db_path}): #{e.message}"
+    rescue SQLite3::Exception => e
+      raise StateError, "SQLite error: #{e.message}"
     end
 
     # Insert or update a preview record.
     def upsert(pr_number:, sha:, preview_url:, status: "active")
       now = Time.now.utc.iso8601
-      @db.execute(<<~SQL, pr_number, sha, preview_url, now, now, status)
+      @db.execute(<<~SQL, [pr_number, sha, preview_url, now, now, status])
         INSERT INTO previews (pr_number, sha, preview_url, deployed_at, last_accessed_at, status)
         VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(pr_number) DO UPDATE SET
@@ -29,21 +33,29 @@ module KamalPullPreview
           last_accessed_at = excluded.last_accessed_at,
           status           = excluded.status
       SQL
+    rescue SQLite3::BusyException => e
+      raise StateError, "Database is locked (another process is writing): #{e.message}"
     end
 
     # Find a preview by PR number. Returns a Hash or nil.
     def find(pr_number)
-      @db.get_first_row("SELECT * FROM previews WHERE pr_number = ?", pr_number)
+      @db.get_first_row("SELECT * FROM previews WHERE pr_number = ?", [pr_number])
+    rescue SQLite3::BusyException => e
+      raise StateError, "Database is locked: #{e.message}"
     end
 
     # Return all preview records as an array of Hashes.
     def all
       @db.execute("SELECT * FROM previews ORDER BY deployed_at DESC")
+    rescue SQLite3::BusyException => e
+      raise StateError, "Database is locked: #{e.message}"
     end
 
     # Delete a preview record by PR number.
     def remove(pr_number)
-      @db.execute("DELETE FROM previews WHERE pr_number = ?", pr_number)
+      @db.execute("DELETE FROM previews WHERE pr_number = ?", [pr_number])
+    rescue SQLite3::BusyException => e
+      raise StateError, "Database is locked: #{e.message}"
     end
 
     # Return previews whose last_accessed_at is older than ttl_hours.
@@ -51,8 +63,10 @@ module KamalPullPreview
       cutoff = (Time.now.utc - (ttl_hours * 3600)).iso8601
       @db.execute(
         "SELECT * FROM previews WHERE last_accessed_at < ? AND status = 'active'",
-        cutoff,
+        [cutoff],
       )
+    rescue SQLite3::BusyException => e
+      raise StateError, "Database is locked: #{e.message}"
     end
 
     private

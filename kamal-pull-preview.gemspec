@@ -14,9 +14,8 @@ Gem::Specification.new do |spec|
                        "local SQLite database, and exposes a simple CLI."
   spec.homepage      = "https://github.com/cloudsbird/kamal-pull-preview"
   spec.license       = "MIT"
-  spec.required_ruby_version = ">= 3.2"
+  spec.required_ruby_version = ">= 3.2", "< 4.2"
 
-  spec.metadata["homepage_uri"]    = spec.homepage
   spec.metadata["source_code_uri"] = spec.homepage
   spec.metadata["changelog_uri"]   = "#{spec.homepage}/blob/main/CHANGELOG.md"
 
@@ -27,6 +26,7 @@ Gem::Specification.new do |spec|
   spec.executables   = ["kamal-pull-preview"]
   spec.require_paths = ["lib"]
 
+  spec.add_dependency "logger",      "~> 1.0"
   spec.add_dependency "thor",        "~> 1.3"
   spec.add_dependency "sqlite3",     "~> 1.7"
   spec.add_dependency "tty-table",   "~> 0.12"

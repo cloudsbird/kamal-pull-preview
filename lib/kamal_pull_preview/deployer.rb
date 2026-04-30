@@ -15,7 +15,9 @@ module KamalPullPreview
       check_capacity!
 
       destination_file = @generator.generate(pr_number: pr_number)
-      $stdout.puts "Generated destination: #{destination_file}"
+      logger.info("Generated destination: #{destination_file}")
+      logger.info("Using registry: #{@config.registry}")
+      logger.info("Repo context: #{repo}") if repo
 
       # TODO: pass --version / image tag derived from sha when Kamal supports it
       Executor.execute("kamal", "deploy", "-d", "pr-#{Integer(pr_number)}")
@@ -27,13 +29,25 @@ module KamalPullPreview
     end
 
     # Remove the preview for the given PR.
+    # Cleans up both the Kamal destination and local state, even if one is missing.
     def remove(pr_number:)
-      raise DeployError, "No destination file found for PR ##{pr_number}. Was it ever deployed?" unless destination_exists?(pr_number)
+      if destination_exists?(pr_number)
+        Executor.execute("kamal", "remove", "-d", "pr-#{Integer(pr_number)}")
+        @generator.cleanup(pr_number: pr_number)
+      else
+        logger.warn("No destination file found for PR ##{pr_number}, skipping kamal remove")
+      end
 
-      Executor.execute("kamal", "remove", "-d", "pr-#{Integer(pr_number)}")
-
-      @generator.cleanup(pr_number: pr_number)
       @state.remove(pr_number)
+    rescue DeployError => e
+      logger.error("Failed to remove PR ##{pr_number} from Kamal: #{e.message}")
+      # Still attempt to clean up local state so we don't leak records
+      begin
+        @state.remove(pr_number)
+      rescue StateError => state_error
+        logger.error("Failed to remove PR ##{pr_number} from state: #{state_error.message}")
+      end
+      raise e
     end
 
     private
@@ -48,6 +62,10 @@ module KamalPullPreview
 
     def destination_exists?(pr_number)
       File.exist?(File.join(DestinationGenerator::DESTINATIONS_DIR, "pr-#{pr_number}.yml"))
+    end
+
+    def logger
+      KamalPullPreview.logger
     end
   end
 end

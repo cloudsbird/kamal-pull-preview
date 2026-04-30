@@ -2,6 +2,7 @@
 
 require_relative "kamal_pull_preview/version"
 require_relative "kamal_pull_preview/errors"
+require_relative "kamal_pull_preview/log"
 require_relative "kamal_pull_preview/config"
 require_relative "kamal_pull_preview/state"
 require_relative "kamal_pull_preview/executor"
