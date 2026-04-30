@@ -30,8 +30,6 @@ Gem::Specification.new do |spec|
   spec.add_dependency "thor",        "~> 1.3"
   spec.add_dependency "sqlite3",     "~> 1.7"
   spec.add_dependency "tty-table",   "~> 0.12"
-  spec.add_dependency "tty-spinner", "~> 0.9"
-  spec.add_dependency "octokit",     "~> 8.0"
 
   spec.add_development_dependency "rspec", "~> 3.13"
   spec.add_development_dependency "rake",  "~> 13.0"
