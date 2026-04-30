@@ -1,1 +1,358 @@
 # kamal-pull-preview
+
+[![Gem Version](https://img.shields.io/gem/v/kamal-pull-preview)](https://rubygems.org/gems/kamal-pull-preview)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+Per-pull-request preview environments powered by **[Kamal 2.x](https://kamal-deploy.org/)**.
+
+Every opened pull request gets its own live URL (`https://pr-42.preview.example.com`). When the PR is closed the environment is torn down automatically. State is tracked locally in SQLite so no extra infrastructure is needed.
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Configuration Reference](#configuration-reference)
+- [CLI Reference](#cli-reference)
+- [GitHub Actions Integration](#github-actions-integration)
+- [Database Strategies](#database-strategies)
+- [How It Works](#how-it-works)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## Features
+
+- 🚀 **One command deploy** — `kamal-pull-preview deploy --pr 42 --sha abc1234 --repo owner/repo`
+- 🔗 **Predictable URLs** — every PR gets `https://pr-{number}.{your-domain}`
+- 📋 **State tracking** — SQLite database at `~/.kamal-pull-preview/state.db` tracks every active preview
+- ⏰ **TTL-based expiry** — previews are automatically cleaned up after a configurable number of hours
+- 🔒 **Concurrency cap** — configurable maximum number of simultaneously running previews
+- 🐙 **GitHub Actions ready** — drop-in workflow template included
+- 💎 **Pure Ruby** — no Rails dependency, works in any Ruby project
+
+---
+
+## Prerequisites
+
+| Requirement | Version |
+|---|---|
+| Ruby | ≥ 3.2 |
+| [Kamal](https://kamal-deploy.org/) | 2.x (must be on `PATH`) |
+| A server reachable over SSH | — |
+| A Docker registry | — |
+
+Kamal must already be configured in your project (`config/deploy.yml`) and able to deploy the main branch before you add previews.
+
+---
+
+## Installation
+
+Add to your `Gemfile`:
+
+```ruby
+gem "kamal-pull-preview"
+```
+
+Then run:
+
+```sh
+bundle install
+```
+
+Or install it globally:
+
+```sh
+gem install kamal-pull-preview
+```
+
+---
+
+## Quick Start
+
+### 1. Create the config file
+
+Copy the example config into your project root:
+
+```sh
+cat > kamal-pull-preview.yml << 'EOF'
+host: "preview.example.com"
+domain: "preview.example.com"
+registry: "registry.example.com/myorg/myapp"
+ttl_hours: 48
+idle_stop_minutes: 240
+max_concurrent: 15
+db_strategy: "none"
+EOF
+```
+
+See the [Configuration Reference](#configuration-reference) for all options.
+
+### 2. Add the GitHub Actions workflow
+
+Create `.github/workflows/pull-preview.yml` (you can use the template at `templates/github-action.yml.erb` as a starting point):
+
+```yaml
+name: Pull Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+      - run: bundle install
+      - run: |
+          bundle exec kamal-pull-preview deploy \
+            --pr ${{ github.event.pull_request.number }} \
+            --sha ${{ github.sha }} \
+            --repo ${{ github.repository }}
+        env:
+          KAMAL_REGISTRY_PASSWORD: ${{ secrets.KAMAL_REGISTRY_PASSWORD }}
+          # Add any other secrets Kamal needs
+
+  remove:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+      - run: bundle install
+      - run: |
+          bundle exec kamal-pull-preview remove \
+            --pr ${{ github.event.pull_request.number }}
+        env:
+          KAMAL_REGISTRY_PASSWORD: ${{ secrets.KAMAL_REGISTRY_PASSWORD }}
+```
+
+### 3. Done
+
+Open a pull request — the workflow deploys a preview and prints the URL. Close the PR — the environment is removed.
+
+---
+
+## Configuration Reference
+
+Place `kamal-pull-preview.yml` in your project root. All keys are at the top level.
+
+```yaml
+# SSH host where preview containers will be deployed (required).
+# Must be reachable by the machine running kamal-pull-preview.
+host: "preview.example.com"
+
+# Base domain for preview URLs (required).
+# Each PR gets a subdomain: pr-42.preview.example.com
+domain: "preview.example.com"
+
+# Docker registry prefix used by Kamal (required).
+# Must match the "image" setting in your config/deploy.yml.
+registry: "registry.example.com/myorg/myapp"
+
+# Hours of inactivity before a preview is considered expired. Default: 48
+ttl_hours: 48
+
+# Minutes of inactivity before the container is stopped. Default: 240
+idle_stop_minutes: 240
+
+# Maximum number of simultaneously running previews. Default: 15
+max_concurrent: 15
+
+# Database strategy. Default: "none"
+# Options: "none" | "sqlite" | "shared_schema"
+db_strategy: "none"
+```
+
+| Key | Required | Default | Description |
+|---|---|---|---|
+| `host` | ✅ | — | SSH host for the preview server |
+| `domain` | ✅ | — | Base domain; PR URLs become `pr-N.{domain}` |
+| `registry` | ✅ | — | Docker image registry prefix |
+| `ttl_hours` | — | `48` | Hours until an inactive preview expires |
+| `idle_stop_minutes` | — | `240` | Minutes of inactivity before auto-stop |
+| `max_concurrent` | — | `15` | Maximum simultaneous active previews |
+| `db_strategy` | — | `"none"` | Database isolation strategy (see [Database Strategies](#database-strategies)) |
+
+---
+
+## CLI Reference
+
+```
+kamal-pull-preview <command> [options]
+```
+
+### `deploy`
+
+Builds and deploys a preview for the given pull request.
+
+```sh
+bundle exec kamal-pull-preview deploy \
+  --pr 42 \
+  --sha abc1234def5678 \
+  --repo owner/repo
+```
+
+| Option | Required | Description |
+|---|---|---|
+| `--pr` | ✅ | Pull request number (integer) |
+| `--sha` | ✅ | Git commit SHA to deploy |
+| `--repo` | ✅ | Repository in `owner/repo` format |
+
+Prints the preview URL on success:
+
+```
+Preview deployed: https://pr-42.preview.example.com
+```
+
+### `remove`
+
+Tears down the preview for the given pull request.
+
+```sh
+bundle exec kamal-pull-preview remove --pr 42
+```
+
+| Option | Required | Description |
+|---|---|---|
+| `--pr` | ✅ | Pull request number (integer) |
+
+### `list`
+
+Lists all active previews tracked in the local state database.
+
+```sh
+bundle exec kamal-pull-preview list
+```
+
+Example output:
+
+```
+┌────┬─────────┬──────────────────────────────────────┬────────┬──────────────────────┐
+│ PR │ SHA     │ URL                                  │ Status │ DeployedAt           │
+├────┼─────────┼──────────────────────────────────────┼────────┼──────────────────────┤
+│ 42 │ abc1234 │ https://pr-42.preview.example.com    │ active │ 2026-04-30T10:00:00Z │
+│ 37 │ def5678 │ https://pr-37.preview.example.com    │ active │ 2026-04-29T08:30:00Z │
+└────┴─────────┴──────────────────────────────────────┴────────┴──────────────────────┘
+```
+
+All commands exit with status `1` and print a red error message on failure.
+
+---
+
+## GitHub Actions Integration
+
+The gem ships with a ready-to-use workflow template at `templates/github-action.yml.erb`. Copy it to `.github/workflows/pull-preview.yml` and adjust the environment variables to match your Kamal setup.
+
+**Trigger events:**
+
+| PR event | Action taken |
+|---|---|
+| `opened` | Deploy new preview |
+| `synchronize` | Redeploy with latest commit |
+| `reopened` | Redeploy |
+| `closed` | Remove preview |
+
+**Required secrets** (set in your repository's *Settings → Secrets and variables → Actions*):
+
+- `KAMAL_REGISTRY_PASSWORD` — Docker registry credentials
+- Any SSH key or other secret required by your Kamal configuration
+
+---
+
+## Database Strategies
+
+The `db_strategy` setting controls how the database is handled for each preview environment.
+
+| Strategy | Description |
+|---|---|
+| `none` | No database provisioned. Use this for stateless apps or apps that manage their own database. |
+| `sqlite` | Each preview gets its own SQLite database file, volume-mounted into the container. |
+| `shared_schema` | Previews share a Postgres instance; each PR gets an isolated schema (`pr_42`). |
+
+> **Note:** `sqlite` and `shared_schema` strategies are scaffolded but their full implementation requires additional Kamal configuration in your project.
+
+---
+
+## How It Works
+
+```
+PR opened / pushed
+       │
+       ▼
+kamal-pull-preview deploy
+       │
+       ├── Loads kamal-pull-preview.yml
+       ├── Checks active preview count vs max_concurrent
+       ├── Writes .kamal/destinations/pr-{N}.yml
+       │     (Kamal 2.x destination override with host + proxy.host)
+       ├── Runs: kamal deploy -d pr-{N}
+       └── Records preview in ~/.kamal-pull-preview/state.db
+
+PR closed
+       │
+       ▼
+kamal-pull-preview remove
+       │
+       ├── Runs: kamal remove -d pr-{N}
+       ├── Deletes .kamal/destinations/pr-{N}.yml
+       └── Removes record from state.db
+```
+
+Each PR destination file looks like:
+
+```yaml
+# .kamal/destinations/pr-42.yml
+servers:
+  web:
+    - preview.example.com
+proxy:
+  host: pr-42.preview.example.com
+env:
+  clear:
+    PULL_PREVIEW: "true"
+    PR_NUMBER: "42"
+```
+
+This is a standard [Kamal 2.x destination override](https://kamal-deploy.org/docs/destinations) — no patching or monkey-patching of Kamal is involved.
+
+**State database** is stored at `~/.kamal-pull-preview/state.db` (SQLite). The schema has a single `previews` table:
+
+| Column | Type | Description |
+|---|---|---|
+| `pr_number` | INTEGER UNIQUE | Pull request number |
+| `sha` | TEXT | Deployed commit SHA |
+| `preview_url` | TEXT | Full HTTPS preview URL |
+| `deployed_at` | TEXT | ISO 8601 timestamp of first deploy |
+| `last_accessed_at` | TEXT | ISO 8601 timestamp of last deploy/update |
+| `status` | TEXT | `active` or `removed` |
+
+---
+
+## Contributing
+
+Bug reports and pull requests are welcome on [GitHub](https://github.com/cloudsbird/kamal-pull-preview).
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b my-feature`)
+3. Make your changes
+4. Open a pull request
+
+Please follow the existing code conventions: keyword arguments, `frozen_string_literal: true`, and keep each class in its own file under `lib/kamal_pull_preview/`.
+
+---
+
+## License
+
+The gem is available as open source under the terms of the [MIT License](LICENSE).
