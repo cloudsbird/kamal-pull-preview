@@ -9,5 +9,8 @@ pkg/
 # Test coverage
 coverage/
 
+# RSpec
+.rspec_status
+
 # OS
 .DS_Store
