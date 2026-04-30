@@ -1,0 +1,56 @@
+name: Pull Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Install dependencies
+        run: bundle install
+
+      - name: Deploy preview
+        run: |
+          bundle exec kamal-pull-preview deploy \
+            --pr ${{ github.event.pull_request.number }} \
+            --sha ${{ github.sha }} \
+            --repo ${{ github.repository }}
+        env:
+          # Add any secrets your app or Kamal requires here, e.g.:
+          # KAMAL_REGISTRY_PASSWORD: ${{ secrets.KAMAL_REGISTRY_PASSWORD }}
+          # SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+
+  remove:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Install dependencies
+        run: bundle install
+
+      - name: Remove preview
+        run: |
+          bundle exec kamal-pull-preview remove \
+            --pr ${{ github.event.pull_request.number }}
+        env:
+          # Add any secrets your app or Kamal requires here, e.g.:
+          # KAMAL_REGISTRY_PASSWORD: ${{ secrets.KAMAL_REGISTRY_PASSWORD }}
+          # SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
