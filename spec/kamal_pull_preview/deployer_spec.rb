@@ -16,9 +16,10 @@ RSpec.describe KamalPullPreview::Deployer do
       registry:          "registry.example.com/myorg/myapp",
     )
   end
-  let(:state)     { instance_double(KamalPullPreview::State) }
-  let(:generator) { instance_double(KamalPullPreview::DestinationGenerator) }
-  let(:deployer)  { described_class.new(config: config, state: state, generator: generator) }
+  let(:state)       { instance_double(KamalPullPreview::State) }
+  let(:generator)   { instance_double(KamalPullPreview::DestinationGenerator) }
+  let(:db_manager)  { instance_double(KamalPullPreview::DatabaseManager) }
+  let(:deployer)    { described_class.new(config: config, state: state, generator: generator, db_manager: db_manager) }
 
   around do |example|
     Dir.chdir(tmp_dir) { example.run }
@@ -33,10 +34,13 @@ RSpec.describe KamalPullPreview::Deployer do
     allow(state).to receive(:upsert)
     allow(state).to receive(:remove)
     allow(state).to receive(:all).and_return([])
+    allow(db_manager).to receive(:setup)
+    allow(db_manager).to receive(:teardown)
   end
 
   describe "#deploy" do
     it "checks capacity, generates destination, runs kamal deploy, and records state" do
+      expect(db_manager).to receive(:setup).with(pr_number: 42)
       expect(generator).to receive(:generate).with(pr_number: 42).and_return(".kamal/destinations/pr-42.yml")
       expect(KamalPullPreview::Executor).to receive(:execute).with("kamal", "deploy", "-d", "pr-42")
       expect(state).to receive(:upsert).with(pr_number: 42, sha: "abc1234", preview_url: "https://pr-42.preview.example.com")
@@ -70,24 +74,27 @@ RSpec.describe KamalPullPreview::Deployer do
       File.write(".kamal/destinations/pr-42.yml", "dummy")
     end
 
-    it "runs kamal remove, cleans up destination, and deletes state" do
+    it "runs kamal remove, cleans up destination, drops database, and deletes state" do
       expect(KamalPullPreview::Executor).to receive(:execute).with("kamal", "remove", "-d", "pr-42")
       expect(generator).to receive(:cleanup).with(pr_number: 42)
+      expect(db_manager).to receive(:teardown).with(pr_number: 42)
       expect(state).to receive(:remove).with(42)
 
       deployer.remove(pr_number: 42)
     end
 
-    it "cleans up state even when destination file is missing" do
+    it "cleans up database and state even when destination file is missing" do
       FileUtils.rm(".kamal/destinations/pr-42.yml")
       expect(KamalPullPreview::Executor).not_to receive(:execute)
+      expect(db_manager).to receive(:teardown).with(pr_number: 42)
       expect(state).to receive(:remove).with(42)
 
       deployer.remove(pr_number: 42)
     end
 
-    it "cleans up state even when kamal remove fails" do
+    it "cleans up database and state even when kamal remove fails" do
       expect(KamalPullPreview::Executor).to receive(:execute).and_raise(KamalPullPreview::DeployError, "kamal failed")
+      expect(db_manager).to receive(:teardown).with(pr_number: 42)
       expect(state).to receive(:remove).with(42)
 
       expect {

@@ -9,4 +9,7 @@ module KamalPullPreview
 
   # Raised when the SQLite state store encounters an inconsistency.
   class StateError < StandardError; end
+
+  # Raised when a database operation (create, drop, etc.) fails.
+  class DbError < StandardError; end
 end

@@ -3,16 +3,19 @@
 module KamalPullPreview
   # Orchestrates the full deploy / remove lifecycle for a PR preview.
   class Deployer
-    def initialize(config: nil, state: nil, generator: nil)
-      @config    = config    || Config.load
-      @state     = state     || State.new
-      @generator = generator || DestinationGenerator.new(config: @config)
+    def initialize(config: nil, state: nil, generator: nil, db_manager: nil)
+      @config     = config     || Config.load
+      @state      = state      || State.new
+      @generator  = generator  || DestinationGenerator.new(config: @config)
+      @db_manager = db_manager || DatabaseManager.new(config: @config)
     end
 
     # Deploy a preview for the given PR.
     # Returns the preview URL string on success.
     def deploy(pr_number:, sha:, repo: nil)
       check_capacity!
+
+      @db_manager.setup(pr_number: pr_number)
 
       destination_file = @generator.generate(pr_number: pr_number)
       logger.info("Generated destination: #{destination_file}")
@@ -38,10 +41,16 @@ module KamalPullPreview
         logger.warn("No destination file found for PR ##{pr_number}, skipping kamal remove")
       end
 
+      @db_manager.teardown(pr_number: pr_number)
       @state.remove(pr_number)
     rescue DeployError => e
       logger.error("Failed to remove PR ##{pr_number} from Kamal: #{e.message}")
-      # Still attempt to clean up local state so we don't leak records
+      # Still attempt to clean up database and local state so we don't leak records
+      begin
+        @db_manager.teardown(pr_number: pr_number)
+      rescue DbError => db_error
+        logger.error("Failed to remove PR ##{pr_number} database: #{db_error.message}")
+      end
       begin
         @state.remove(pr_number)
       rescue StateError => state_error

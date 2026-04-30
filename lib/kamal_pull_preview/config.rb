@@ -14,7 +14,7 @@ module KamalPullPreview
       "db_strategy"          => "none",
     }.freeze
 
-    VALID_DB_STRATEGIES = %w[none sqlite shared_schema].freeze
+    VALID_DB_STRATEGIES = %w[none sqlite shared_schema postgresql].freeze
 
     FIELDS = %i[
       host
@@ -24,6 +24,10 @@ module KamalPullPreview
       max_concurrent
       db_strategy
       registry
+      pg_host
+      pg_port
+      pg_user
+      pg_password
     ].freeze
 
     ConfigStruct = Struct.new(*FIELDS, keyword_init: true)
@@ -56,6 +60,10 @@ module KamalPullPreview
         max_concurrent:     data["max_concurrent"].to_i,
         db_strategy:        data["db_strategy"].to_s.strip,
         registry:           data["registry"].to_s.strip,
+        pg_host:            data["pg_host"].to_s.strip,
+        pg_port:            (data["pg_port"] || 5432).to_i,
+        pg_user:            data["pg_user"].to_s.strip,
+        pg_password:        data["pg_password"].to_s,
       ).freeze
     end
 
@@ -77,6 +85,14 @@ module KamalPullPreview
         raise ConfigError,
               "Invalid db_strategy: '#{db_strategy}'. " \
               "Must be one of: #{VALID_DB_STRATEGIES.join(', ')}"
+      end
+
+      if db_strategy == "postgresql"
+        %w[pg_host pg_user pg_password].each do |key|
+          if data[key].nil? || data[key].to_s.empty?
+            raise ConfigError, "Missing required config key for postgresql strategy: #{key}"
+          end
+        end
       end
     end
 
@@ -103,8 +119,14 @@ module KamalPullPreview
         # Maximum number of concurrently running previews (default: 15)
         max_concurrent: 15
 
-        # Database strategy: "none" | "sqlite" | "shared_schema" (default: "none")
+        # Database strategy: "none" | "sqlite" | "shared_schema" | "postgresql" (default: "none")
         db_strategy: "none"
+
+        # PostgreSQL settings (only required when db_strategy is "postgresql")
+        # pg_host: "db.example.com"
+        # pg_port: 5432
+        # pg_user: "preview_admin"
+        # pg_password: "secret"
       YAML
     end
   end

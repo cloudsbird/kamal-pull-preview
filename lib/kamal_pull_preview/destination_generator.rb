@@ -36,6 +36,18 @@ module KamalPullPreview
 
     # Renders the Kamal 2.x destination override content.
     def render(pr_number)
+      env_vars = {
+        "PULL_PREVIEW" => "true",
+        "PR_NUMBER" => "#{pr_number}",
+      }
+
+      if @config.db_strategy == "postgresql"
+        db_url = DatabaseManager.new(config: @config).database_url(pr_number: pr_number)
+        env_vars["DATABASE_URL"] = db_url if db_url
+      end
+
+      env_yaml = env_vars.map { |k, v| "            #{k}: \"#{v}\"" }.join("\n")
+
       <<~YAML
         servers:
           web:
@@ -44,8 +56,7 @@ module KamalPullPreview
           host: pr-#{pr_number}.#{@config.domain}
         env:
           clear:
-            PULL_PREVIEW: "true"
-            PR_NUMBER: "#{pr_number}"
+#{env_yaml}
       YAML
     end
   end
