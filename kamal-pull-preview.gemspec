@@ -28,7 +28,7 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency "logger",      "~> 1.0"
   spec.add_dependency "thor",        "~> 1.3"
-  spec.add_dependency "sqlite3",     "~> 1.7"
+  spec.add_dependency "sqlite3",     "~> 2.0"
   spec.add_dependency "tty-table",   "~> 0.12"
 
   spec.add_development_dependency "rspec", "~> 3.13"
