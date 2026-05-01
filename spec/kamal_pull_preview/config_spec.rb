@@ -154,5 +154,80 @@ RSpec.describe KamalPullPreview::Config do
         file.close
       end
     end
+
+    context "with db_seed" do
+      it "loads db_seed with defaults when only source is provided" do
+        file = write_config(<<~YAML)
+          host: "deploy.example.com"
+          domain: "preview.example.com"
+          registry: "registry.example.com/myorg/myapp"
+          db_seed:
+            source: "s3://my-bucket/dumps/latest.dump"
+        YAML
+        config = described_class.load(path: file.path)
+        expect(config.db_seed["source"]).to eq("s3://my-bucket/dumps/latest.dump")
+        expect(config.db_seed["format"]).to eq("auto")
+        expect(config.db_seed["required"]).to be false
+        expect(config.db_seed["table_check"]).to be true
+        file.close
+      end
+
+      it "loads db_seed with all fields specified" do
+        file = write_config(<<~YAML)
+          host: "deploy.example.com"
+          domain: "preview.example.com"
+          registry: "registry.example.com/myorg/myapp"
+          db_seed:
+            source: "https://example.com/dump.dump"
+            format: custom
+            required: true
+            table_check: false
+        YAML
+        config = described_class.load(path: file.path)
+        expect(config.db_seed["source"]).to eq("https://example.com/dump.dump")
+        expect(config.db_seed["format"]).to eq("custom")
+        expect(config.db_seed["required"]).to be true
+        expect(config.db_seed["table_check"]).to be false
+        file.close
+      end
+
+      it "raises ConfigError when db_seed source is missing" do
+        file = write_config(<<~YAML)
+          host: "deploy.example.com"
+          domain: "preview.example.com"
+          registry: "registry.example.com/myorg/myapp"
+          db_seed:
+            format: custom
+        YAML
+        expect { described_class.load(path: file.path) }
+          .to raise_error(KamalPullPreview::ConfigError, /source/)
+        file.close
+      end
+
+      it "raises ConfigError when db_seed format is invalid" do
+        file = write_config(<<~YAML)
+          host: "deploy.example.com"
+          domain: "preview.example.com"
+          registry: "registry.example.com/myorg/myapp"
+          db_seed:
+            source: "s3://bucket/dump.sql"
+            format: invalid_format
+        YAML
+        expect { described_class.load(path: file.path) }
+          .to raise_error(KamalPullPreview::ConfigError, /format/)
+        file.close
+      end
+
+      it "returns nil db_seed when not configured" do
+        file = write_config(<<~YAML)
+          host: "deploy.example.com"
+          domain: "preview.example.com"
+          registry: "registry.example.com/myorg/myapp"
+        YAML
+        config = described_class.load(path: file.path)
+        expect(config.db_seed).to be_nil
+        file.close
+      end
+    end
   end
 end

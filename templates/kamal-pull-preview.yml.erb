@@ -18,6 +18,7 @@ ttl_hours: 48
 
 # Minutes of inactivity before the container is automatically stopped.
 # Default: 240 (4 hours)
+# NOTE: idle_stop_minutes is reserved for future use and currently has no effect.
 idle_stop_minutes: 240
 
 # Maximum number of concurrently running previews.
@@ -32,3 +33,17 @@ max_concurrent: 15
 #   "shared_schema" — previews share a Postgres DB with schema-per-PR isolation
 # Default: "none"
 db_strategy: "none"
+
+# Accessories strategy: "auto" (read from config/deploy.yml) | "none" | list (default: "auto")
+# accessories: auto
+# accessories: none
+# accessories:
+#   - redis
+#   - postgres
+
+# Database seed dump (optional)
+# db_seed:
+#   source: "s3://my-bucket/dumps/latest.dump"
+#   format: custom
+#   required: false
+#   table_check: true
