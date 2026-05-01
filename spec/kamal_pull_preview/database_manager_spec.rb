@@ -135,4 +135,121 @@ RSpec.describe KamalPullPreview::DatabaseManager do
       expect(manager.send(:database_exists?, "pr_42")).to be false
     end
   end
+
+  describe "#restore_seed" do
+    let(:seed_config) do
+      KamalPullPreview::Config::ConfigStruct.new(
+        host:              "deploy.example.com",
+        domain:            "preview.example.com",
+        ttl_hours:         48,
+        idle_stop_minutes: 240,
+        max_concurrent:    15,
+        db_strategy:       "none",
+        registry:          "registry.example.com/myorg/myapp",
+        pg_host:           "",
+        pg_port:           0,
+        pg_user:           "",
+        pg_password:       "",
+        db_seed: {
+          "source"      => "s3://bucket/dump.sql",
+          "format"      => "auto",
+          "required"    => false,
+          "table_check" => false,
+        },
+      )
+    end
+
+    context "when db_seed is not configured" do
+      let(:manager) { described_class.new(config: none_config) }
+
+      it "is a no-op" do
+        expect(KamalPullPreview::DumpFetcher).not_to receive(:new)
+        manager.restore_seed(pr_number: 42, destination_type: :none)
+      end
+    end
+
+    context "when source is unreachable and required: false" do
+      let(:manager) { described_class.new(config: seed_config) }
+
+      it "logs a warning and returns without raising" do
+        allow_any_instance_of(KamalPullPreview::DumpFetcher).to receive(:available?).and_return(false)
+        expect { manager.restore_seed(pr_number: 42, destination_type: :none) }.not_to raise_error
+      end
+    end
+
+    context "when source is unreachable and required: true" do
+      let(:required_seed_config) do
+        KamalPullPreview::Config::ConfigStruct.new(
+          host:              "deploy.example.com",
+          domain:            "preview.example.com",
+          ttl_hours:         48,
+          idle_stop_minutes: 240,
+          max_concurrent:    15,
+          db_strategy:       "none",
+          registry:          "registry.example.com/myorg/myapp",
+          pg_host:           "",
+          pg_port:           0,
+          pg_user:           "",
+          pg_password:       "",
+          db_seed: {
+            "source"      => "s3://bucket/dump.sql",
+            "format"      => "auto",
+            "required"    => true,
+            "table_check" => false,
+          },
+        )
+      end
+      let(:manager) { described_class.new(config: required_seed_config) }
+
+      it "raises DbError" do
+        allow_any_instance_of(KamalPullPreview::DumpFetcher).to receive(:available?).and_return(false)
+        expect {
+          manager.restore_seed(pr_number: 42, destination_type: :none)
+        }.to raise_error(KamalPullPreview::DbError, /required but unreachable/)
+      end
+    end
+
+    context "when table_check is true and tables already exist" do
+      let(:table_check_config) do
+        KamalPullPreview::Config::ConfigStruct.new(
+          host:              "deploy.example.com",
+          domain:            "preview.example.com",
+          ttl_hours:         48,
+          idle_stop_minutes: 240,
+          max_concurrent:    15,
+          db_strategy:       "none",
+          registry:          "registry.example.com/myorg/myapp",
+          pg_host:           "",
+          pg_port:           0,
+          pg_user:           "",
+          pg_password:       "",
+          db_seed: {
+            "source"      => "s3://bucket/dump.sql",
+            "format"      => "auto",
+            "required"    => false,
+            "table_check" => true,
+          },
+        )
+      end
+      let(:manager) { described_class.new(config: table_check_config) }
+
+      it "skips the restore" do
+        allow_any_instance_of(KamalPullPreview::DumpFetcher).to receive(:available?).and_return(true)
+        allow(manager).to receive(:tables_exist?).and_return(true)
+        expect_any_instance_of(KamalPullPreview::DumpFetcher).not_to receive(:fetch)
+        manager.restore_seed(pr_number: 42, destination_type: :shared_schema)
+      end
+    end
+
+    context "when source is available and table_check is false" do
+      let(:manager) { described_class.new(config: seed_config) }
+
+      it "fetches the dump and calls restore for :none destination_type" do
+        allow_any_instance_of(KamalPullPreview::DumpFetcher).to receive(:available?).and_return(true)
+        allow_any_instance_of(KamalPullPreview::DumpFetcher).to receive(:fetch).and_return("/tmp/dump.sql")
+        allow_any_instance_of(KamalPullPreview::DumpFetcher).to receive(:detect_format).and_return("plain")
+        expect { manager.restore_seed(pr_number: 42, destination_type: :none) }.not_to raise_error
+      end
+    end
+  end
 end

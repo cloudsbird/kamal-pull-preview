@@ -8,10 +8,11 @@ module KamalPullPreview
   class DestinationGenerator
     DESTINATIONS_DIR = ".kamal/destinations"
 
-    def initialize(config: nil, deploy_config_reader: nil, accessories_manager: nil)
+    def initialize(config: nil, deploy_config_reader: nil, accessories_manager: nil, db_manager: nil)
       @config = config || Config.load
       @deploy_config_reader = deploy_config_reader
       @accessories_manager  = accessories_manager
+      @db_manager           = db_manager || DatabaseManager.new(config: @config)
     end
 
     # Write the destination YAML for the given PR number.
@@ -63,7 +64,7 @@ module KamalPullPreview
       }
 
       if @config.db_strategy == "postgresql"
-        db_url = DatabaseManager.new(config: @config).database_url(pr_number: pr_number)
+        db_url = @db_manager.database_url(pr_number: pr_number)
         env_vars["DATABASE_URL"] = db_url if db_url
       end
 

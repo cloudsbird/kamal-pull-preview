@@ -16,6 +16,7 @@ module KamalPullPreview
     }.freeze
 
     VALID_DB_STRATEGIES = %w[none sqlite shared_schema postgresql].freeze
+    VALID_DB_SEED_FORMATS = %w[auto custom plain directory].freeze
 
     FIELDS = %i[
       host
@@ -30,6 +31,7 @@ module KamalPullPreview
       pg_port
       pg_user
       pg_password
+      db_seed
     ].freeze
 
     ConfigStruct = Struct.new(*FIELDS, keyword_init: true)
@@ -67,6 +69,7 @@ module KamalPullPreview
         pg_port:            (data["pg_port"] || 5432).to_i,
         pg_user:            data["pg_user"].to_s.strip,
         pg_password:        data["pg_password"].to_s,
+        db_seed:            normalize_db_seed(data["db_seed"]),
       ).freeze
     end
 
@@ -97,6 +100,8 @@ module KamalPullPreview
           end
         end
       end
+
+      validate_db_seed!(data["db_seed"]) if data["db_seed"]
     end
 
     # Returns an example YAML string that can be written to kamal-pull-preview.yml.
@@ -150,6 +155,35 @@ module KamalPullPreview
         value.map(&:to_s)
       else
         :auto
+      end
+    end
+
+    def self.normalize_db_seed(value)
+      return nil unless value.is_a?(Hash)
+
+      {
+        "source"       => value["source"].to_s,
+        "format"       => (value["format"] || "auto").to_s,
+        "required"     => value.key?("required") ? !!value["required"] : false,
+        "table_check"  => value.key?("table_check") ? !!value["table_check"] : true,
+      }.freeze
+    end
+
+    def self.validate_db_seed!(raw)
+      unless raw.is_a?(Hash)
+        raise ConfigError, "Invalid db_seed: must be a mapping with at least a 'source' key"
+      end
+
+      source = raw["source"].to_s.strip
+      if source.empty?
+        raise ConfigError, "Invalid db_seed: 'source' must be a non-empty string"
+      end
+
+      fmt = (raw["format"] || "auto").to_s
+      unless VALID_DB_SEED_FORMATS.include?(fmt)
+        raise ConfigError,
+              "Invalid db_seed format: '#{fmt}'. " \
+              "Must be one of: #{VALID_DB_SEED_FORMATS.join(', ')}"
       end
     end
   end
