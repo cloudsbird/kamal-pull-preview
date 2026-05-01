@@ -30,6 +30,7 @@ Every opened pull request gets its own live URL (`https://pr-42.preview.example.
 - 🚀 **One command deploy** — `kamal-pull-preview deploy --pr 42 --sha abc1234 --repo owner/repo`
 - 🔗 **Predictable URLs** — every PR gets `https://pr-{number}.{your-domain}`
 - 📋 **State tracking** — SQLite database at `~/.kamal-pull-preview/state.db` tracks every active preview
+- 🐘 **Per-PR PostgreSQL** — each preview can get its own isolated database with automatic create/drop lifecycle
 - ⏰ **TTL-based expiry** — previews are automatically cleaned up after a configurable number of hours
 - 🔒 **Concurrency cap** — configurable maximum number of simultaneously running previews
 - 🐙 **GitHub Actions ready** — drop-in workflow template included
@@ -45,6 +46,7 @@ Every opened pull request gets its own live URL (`https://pr-42.preview.example.
 | [Kamal](https://kamal-deploy.org/) | 2.x (must be on `PATH`) |
 | A server reachable over SSH | — |
 | A Docker registry | — |
+| PostgreSQL server & `psql` client | Optional — only needed for `db_strategy: "postgresql"` |
 
 Kamal must already be configured in your project (`config/deploy.yml`) and able to deploy the main branch before you add previews.
 
@@ -89,6 +91,8 @@ max_concurrent: 15
 db_strategy: "none"
 EOF
 ```
+
+**Using PostgreSQL?** See the [Database Strategies](#database-strategies) section for a full `postgresql` example.
 
 See the [Configuration Reference](#configuration-reference) for all options.
 
@@ -171,8 +175,14 @@ idle_stop_minutes: 240
 max_concurrent: 15
 
 # Database strategy. Default: "none"
-# Options: "none" | "sqlite" | "shared_schema"
+# Options: "none" | "sqlite" | "shared_schema" | "postgresql"
 db_strategy: "none"
+
+# PostgreSQL settings (only required when db_strategy is "postgresql")
+# pg_host: "db.example.com"
+# pg_port: 5432
+# pg_user: "preview_admin"
+# pg_password: "secret"
 ```
 
 | Key | Required | Default | Description |
@@ -184,6 +194,10 @@ db_strategy: "none"
 | `idle_stop_minutes` | — | `240` | Minutes of inactivity before auto-stop |
 | `max_concurrent` | — | `15` | Maximum simultaneous active previews |
 | `db_strategy` | — | `"none"` | Database isolation strategy (see [Database Strategies](#database-strategies)) |
+| `pg_host` | when `db_strategy: postgresql` | — | PostgreSQL server host |
+| `pg_port` | when `db_strategy: postgresql` | `5432` | PostgreSQL server port |
+| `pg_user` | when `db_strategy: postgresql` | — | PostgreSQL user with CREATE/DROP DATABASE privileges |
+| `pg_password` | when `db_strategy: postgresql` | — | PostgreSQL password |
 
 ---
 
@@ -280,6 +294,36 @@ The `db_strategy` setting controls how the database is handled for each preview 
 | `none` | No database provisioned. Use this for stateless apps or apps that manage their own database. |
 | `sqlite` | Each preview gets its own SQLite database file, volume-mounted into the container. |
 | `shared_schema` | Previews share a Postgres instance; each PR gets an isolated schema (`pr_42`). |
+| `postgresql` | Each preview gets its own isolated PostgreSQL database (`pr_42`) with automatic create/drop lifecycle. |
+
+### PostgreSQL setup
+
+When `db_strategy` is set to `"postgresql"`, the gem will:
+
+1. **Create a database** named `pr_{number}` (e.g., `pr_42`) on deploy if it doesn't already exist.
+2. **Inject `DATABASE_URL`** into the Kamal destination file so your app connects automatically.
+3. **Drop the database** when the preview is removed.
+
+**Requirements:**
+
+- A PostgreSQL server reachable from the machine running `kamal-pull-preview`.
+- The `psql` command-line client installed and on `PATH`.
+- A PostgreSQL user with `CREATEDB` privileges (or pre-created databases with matching names).
+
+**Example config:**
+
+```yaml
+host: "preview.example.com"
+domain: "preview.example.com"
+registry: "registry.example.com/myorg/myapp"
+db_strategy: "postgresql"
+pg_host: "db.example.com"
+pg_port: 5432
+pg_user: "preview_admin"
+pg_password: "<%= ENV['PG_PASSWORD'] %>"
+```
+
+> **Tip:** You can use ERB in `kamal-pull-preview.yml` if you read it through ERB yourself, or keep secrets in environment variables and reference them in your GitHub Actions workflow.
 
 > **Note:** `sqlite` and `shared_schema` strategies are scaffolded but their full implementation requires additional Kamal configuration in your project.
 
@@ -295,8 +339,9 @@ kamal-pull-preview deploy
        │
        ├── Loads kamal-pull-preview.yml
        ├── Checks active preview count vs max_concurrent
+       ├── Creates PostgreSQL database `pr_{N}` (when db_strategy = postgresql)
        ├── Writes .kamal/destinations/pr-{N}.yml
-       │     (Kamal 2.x destination override with host + proxy.host)
+       │     (Kamal 2.x destination override with host + proxy.host + DATABASE_URL)
        ├── Runs: kamal deploy -d pr-{N}
        └── Records preview in ~/.kamal-pull-preview/state.db
 
@@ -307,6 +352,7 @@ kamal-pull-preview remove
        │
        ├── Runs: kamal remove -d pr-{N}
        ├── Deletes .kamal/destinations/pr-{N}.yml
+       ├── Drops PostgreSQL database `pr_{N}` (when db_strategy = postgresql)
        └── Removes record from state.db
 ```
 
@@ -323,7 +369,10 @@ env:
   clear:
     PULL_PREVIEW: "true"
     PR_NUMBER: "42"
+    DATABASE_URL: "postgresql://preview_admin:secret@db.example.com:5432/pr_42"
 ```
+
+> `DATABASE_URL` is only included when `db_strategy` is set to `"postgresql"`.
 
 This is a standard [Kamal 2.x destination override](https://kamal-deploy.org/docs/destinations) — no patching or monkey-patching of Kamal is involved.
 
