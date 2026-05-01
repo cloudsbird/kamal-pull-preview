@@ -83,6 +83,8 @@ module KamalPullPreview
     end
 
     def port_from(cfg)
+      # Port may be specified as "6379" or as "6379:6379" (host:container mapping).
+      # We extract the last segment to get the container port.
       raw = (cfg || {})["port"]
       raw.to_s.split(":").last.to_i.nonzero? || 0
     end
