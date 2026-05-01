@@ -7,6 +7,8 @@ Per-pull-request preview environments powered by **[Kamal 2.x](https://kamal-dep
 
 Every opened pull request gets its own live URL (`https://pr-42.preview.example.com`). When the PR is closed the environment is torn down automatically. State is tracked locally in SQLite so no extra infrastructure is needed.
 
+Accessories defined in your `config/deploy.yml` (Redis, Sidekiq, etc.) are automatically discovered, scoped per-PR, and managed alongside the main deploy — no extra configuration required.
+
 ---
 
 ## Table of Contents
@@ -18,6 +20,7 @@ Every opened pull request gets its own live URL (`https://pr-42.preview.example.
 - [Configuration Reference](#configuration-reference)
 - [CLI Reference](#cli-reference)
 - [GitHub Actions Integration](#github-actions-integration)
+- [Accessories Support](#accessories-support)
 - [Database Strategies](#database-strategies)
 - [How It Works](#how-it-works)
 - [Contributing](#contributing)
@@ -30,6 +33,7 @@ Every opened pull request gets its own live URL (`https://pr-42.preview.example.
 - 🚀 **One command deploy** — `kamal-pull-preview deploy --pr 42 --sha abc1234 --repo owner/repo`
 - 🔗 **Predictable URLs** — every PR gets `https://pr-{number}.{your-domain}`
 - 📋 **State tracking** — SQLite database at `~/.kamal-pull-preview/state.db` tracks every active preview
+- 🔧 **Automatic accessories** — Redis, Sidekiq, and any other Kamal accessory is auto-discovered from `config/deploy.yml`, scoped per-PR, and booted/removed alongside the main app
 - 🐘 **Per-PR PostgreSQL** — each preview can get its own isolated database with automatic create/drop lifecycle
 - ⏰ **TTL-based expiry** — previews are automatically cleaned up after a configurable number of hours
 - 🔒 **Concurrency cap** — configurable maximum number of simultaneously running previews
@@ -178,6 +182,15 @@ max_concurrent: 15
 # Options: "none" | "sqlite" | "shared_schema" | "postgresql"
 db_strategy: "none"
 
+# Accessories strategy. Default: "auto"
+# "auto"  — read accessories and server roles from config/deploy.yml (recommended)
+# "none"  — skip all accessories entirely
+# list    — explicit allowlist of accessory names to include
+accessories: auto
+# accessories: none
+# accessories:
+#   - redis
+
 # PostgreSQL settings (only required when db_strategy is "postgresql")
 # pg_host: "db.example.com"
 # pg_port: 5432
@@ -194,6 +207,7 @@ db_strategy: "none"
 | `idle_stop_minutes` | — | `240` | Minutes of inactivity before auto-stop |
 | `max_concurrent` | — | `15` | Maximum simultaneous active previews |
 | `db_strategy` | — | `"none"` | Database isolation strategy (see [Database Strategies](#database-strategies)) |
+| `accessories` | — | `"auto"` | Accessories strategy: `"auto"`, `"none"`, or a list (see [Accessories Support](#accessories-support)) |
 | `pg_host` | when `db_strategy: postgresql` | — | PostgreSQL server host |
 | `pg_port` | when `db_strategy: postgresql` | `5432` | PostgreSQL server port |
 | `pg_user` | when `db_strategy: postgresql` | — | PostgreSQL user with CREATE/DROP DATABASE privileges |
@@ -285,6 +299,124 @@ The gem ships with a ready-to-use workflow template at `templates/github-action.
 
 ---
 
+## Accessories Support
+
+kamal-pull-preview automatically reads `config/deploy.yml` and scopes every accessory (Redis, Sidekiq workers, etc.) to the PR being deployed. No manual configuration is needed beyond what is already in your Kamal config.
+
+### How it works
+
+On **deploy**, after writing the destination file, the gem:
+
+1. Parses `config/deploy.yml` to discover `accessories:` and `servers:` roles.
+2. Writes PR-scoped accessory definitions into `.kamal/destinations/pr-{N}.yml`.
+3. Runs `kamal accessory boot pr-{N}-{name} -d pr-{N}` for each accessory.
+4. Runs `kamal deploy -d pr-{N}` for the app itself.
+
+On **remove**, after tearing down the app, the gem runs `kamal accessory remove pr-{N}-{name} -d pr-{N}` for every accessory.
+
+### Accessory scoping
+
+Each accessory gets a unique PR-prefixed name so it never conflicts with production or other previews:
+
+| Original name | PR #42 scoped name |
+|---|---|
+| `redis` | `pr-42-redis` |
+| `postgres` | `pr-42-postgres` |
+
+### Port assignment
+
+Ports are computed to be collision-free across concurrent PRs:
+
+```
+pr_port = original_port + 10_000 + (pr_number % 1_000)
+```
+
+**Example:** Redis default `6379` for PR #42 → `6379 + 10000 + 42 = 16421`
+
+With `max_concurrent` defaulting to 15, the 1000-slot window provides plenty of headroom.
+
+### Automatic env var injection
+
+Known accessory types have their connection URLs injected automatically into the PR's env:
+
+| Accessory name pattern | Env var injected |
+|---|---|
+| `/redis/i` | `REDIS_URL=redis://HOST:PR_PORT/0` |
+| `/postgres\|pg/i` | `DATABASE_URL=postgres://postgres@HOST:PR_PORT/preview` |
+| `/mysql/i` | `DATABASE_URL=mysql2://root@HOST:PR_PORT/preview` |
+
+### Server roles
+
+All `servers:` roles defined in `config/deploy.yml` (web, sidekiq, workers, etc.) are automatically included in the destination file. The `web` role gets a simple host list; all other roles get the `hosts:` format Kamal expects.
+
+### Controlling accessories
+
+The `accessories` key in `kamal-pull-preview.yml` has three modes:
+
+```yaml
+# Default: auto-discover from config/deploy.yml
+accessories: auto
+
+# Disable all accessory management
+accessories: none
+
+# Explicit allowlist — only boot these accessories per PR
+accessories:
+  - redis
+```
+
+### Generated destination file (with Redis + Sidekiq)
+
+Given a `config/deploy.yml` with:
+
+```yaml
+servers:
+  web:
+    - 1.2.3.4
+  sidekiq:
+    hosts:
+      - 1.2.3.4
+
+accessories:
+  redis:
+    image: redis:7
+    port: 6379
+```
+
+kamal-pull-preview generates `.kamal/destinations/pr-42.yml`:
+
+```yaml
+servers:
+  web:
+    - preview.example.com
+  sidekiq:
+    hosts:
+      - preview.example.com
+
+proxy:
+  host: pr-42.preview.example.com
+
+accessories:
+  pr-42-redis:
+    image: redis:7
+    host: preview.example.com
+    port: "16421"
+
+env:
+  clear:
+    PULL_PREVIEW: "true"
+    PR_NUMBER: "42"
+    REDIS_URL: "redis://preview.example.com:16421/0"
+```
+
+### Backward compatibility
+
+- If `config/deploy.yml` does not exist, accessories detection is silently skipped.
+- If `accessories:` is absent from `deploy.yml`, no accessories section is written.
+- The existing `db_strategy` key is unaffected.
+
+---
+
 ## Database Strategies
 
 The `db_strategy` setting controls how the database is handled for each preview environment.
@@ -341,7 +473,8 @@ kamal-pull-preview deploy
        ├── Checks active preview count vs max_concurrent
        ├── Creates PostgreSQL database `pr_{N}` (when db_strategy = postgresql)
        ├── Writes .kamal/destinations/pr-{N}.yml
-       │     (Kamal 2.x destination override with host + proxy.host + DATABASE_URL)
+       │     (Kamal 2.x destination override with servers, proxy, accessories, env)
+       ├── Runs: kamal accessory boot pr-{N}-{name} -d pr-{N}  (for each accessory)
        ├── Runs: kamal deploy -d pr-{N}
        └── Records preview in ~/.kamal-pull-preview/state.db
 
@@ -351,28 +484,38 @@ PR closed
 kamal-pull-preview remove
        │
        ├── Runs: kamal remove -d pr-{N}
+       ├── Runs: kamal accessory remove pr-{N}-{name} -d pr-{N}  (for each accessory)
        ├── Deletes .kamal/destinations/pr-{N}.yml
        ├── Drops PostgreSQL database `pr_{N}` (when db_strategy = postgresql)
        └── Removes record from state.db
 ```
 
-Each PR destination file looks like:
+Each PR destination file looks like (with Redis accessory and Sidekiq role):
 
 ```yaml
 # .kamal/destinations/pr-42.yml
 servers:
   web:
     - preview.example.com
+  sidekiq:
+    hosts:
+      - preview.example.com
 proxy:
   host: pr-42.preview.example.com
+accessories:
+  pr-42-redis:
+    image: redis:7
+    host: preview.example.com
+    port: "16421"
 env:
   clear:
     PULL_PREVIEW: "true"
     PR_NUMBER: "42"
-    DATABASE_URL: "postgresql://preview_admin:secret@db.example.com:5432/pr_42"
+    REDIS_URL: "redis://preview.example.com:16421/0"
 ```
 
-> `DATABASE_URL` is only included when `db_strategy` is set to `"postgresql"`.
+> `DATABASE_URL` is only included when `db_strategy` is set to `"postgresql"` or a PostgreSQL/MySQL accessory is detected.
+> The `accessories:` block and additional server roles are only present when discovered in `config/deploy.yml`.
 
 This is a standard [Kamal 2.x destination override](https://kamal-deploy.org/docs/destinations) — no patching or monkey-patching of Kamal is involved.
 
