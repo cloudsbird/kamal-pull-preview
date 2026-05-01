@@ -32,7 +32,6 @@ module KamalPullPreview
           )
         end
 
-        # TODO: pass --version / image tag derived from sha when Kamal supports it
         Executor.execute("kamal", "deploy", "-d", "pr-#{Integer(pr_number)}")
       rescue StandardError => e
         begin

@@ -160,11 +160,11 @@ module KamalPullPreview
     end
 
     def restore_to_accessory_postgres(pr_number:, dump_path:, format:)
-      logger.info("Accessory postgres seed restore is not yet automated for PR ##{pr_number} (format: #{format})")
+      logger.warn("Accessory postgres seed restore is not yet automated for PR ##{pr_number} (format: #{format})")
     end
 
     def restore_to_sqlite(pr_number:, dump_path:)
-      logger.info("SQLite seed restore is not yet automated for PR ##{pr_number} (path: #{dump_path})")
+      logger.warn("SQLite seed restore is not yet automated for PR ##{pr_number} (path: #{dump_path})")
     end
 
     def logger

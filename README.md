@@ -94,7 +94,7 @@ host: "preview.example.com"
 domain: "preview.example.com"
 registry: "registry.example.com/myorg/myapp"
 ttl_hours: 48
-idle_stop_minutes: 240
+idle_stop_minutes: 240  # Reserved for future use; currently has no effect
 max_concurrent: 15
 db_strategy: "none"
 EOF
@@ -177,6 +177,7 @@ registry: "registry.example.com/myorg/myapp"
 ttl_hours: 48
 
 # Minutes of inactivity before the container is stopped. Default: 240
+# NOTE: idle_stop_minutes is reserved for future use and currently has no effect.
 idle_stop_minutes: 240
 
 # Maximum number of simultaneously running previews. Default: 15
@@ -219,7 +220,7 @@ accessories: auto
 | `domain` | ✅ | — | Base domain; PR URLs become `pr-N.{domain}` |
 | `registry` | ✅ | — | Docker image registry prefix |
 | `ttl_hours` | — | `48` | Hours until an inactive preview expires |
-| `idle_stop_minutes` | — | `240` | Minutes of inactivity before auto-stop |
+| `idle_stop_minutes` | — | `240` | Minutes of inactivity before auto-stop *(reserved for future use — currently has no effect)* |
 | `max_concurrent` | — | `15` | Maximum simultaneous active previews |
 | `db_strategy` | — | `"none"` | Database isolation strategy (see [Database Strategies](#database-strategies)) |
 | `accessories` | — | `"auto"` | Accessories strategy: `"auto"`, `"none"`, or a list (see [Accessories Support](#accessories-support)) |
@@ -526,12 +527,12 @@ because reachability cannot be checked without executing the command).
 The gem automatically selects the correct restore strategy based on your `db_strategy` and
 the accessories detected in `config/deploy.yml`.
 
-| Target | Trigger condition | Restore method |
-|---|---|---|
-| `shared_schema` | `db_strategy: shared_schema` | `pg_restore` / `psql` with `search_path = pr_N` |
-| `accessory_postgres` | A postgres/pg-named accessory found in `config/deploy.yml` | SCP dump to host → `docker exec pg_restore` inside the container |
-| `sqlite` | `db_strategy: sqlite` | SCP/`docker cp` a `.sqlite3` seed file to the container volume |
-| `none` | None of the above | Warning printed; restore skipped |
+| Target | Trigger condition | Restore method | Status |
+|---|---|---|---|
+| `shared_schema` | `db_strategy: shared_schema` | `pg_restore` / `psql` with `search_path = pr_N` | **Fully automated** |
+| `accessory_postgres` | A postgres/pg-named accessory found in `config/deploy.yml` | SCP dump to host → `docker exec pg_restore` inside the container | **Not yet automated** — a warning is printed and restore is skipped |
+| `sqlite` | `db_strategy: sqlite` | SCP/`docker cp` a `.sqlite3` seed file to the container volume | **Not yet automated** — a warning is printed and restore is skipped |
+| `none` | None of the above | Warning printed; restore skipped | — |
 
 ### Idempotency
 

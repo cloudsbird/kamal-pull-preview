@@ -37,4 +37,4 @@ bundle exec rake build
 
 ## CI Matrix
 
-The GitHub Actions workflow tests against Ruby versions **3.2**, **3.3**, and **4.0**.
+The GitHub Actions workflow tests against Ruby versions **3.2**, **3.3**, **3.4**, and **4.0**.

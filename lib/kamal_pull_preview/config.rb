@@ -104,47 +104,6 @@ module KamalPullPreview
       validate_db_seed!(data["db_seed"]) if data["db_seed"]
     end
 
-    # Returns an example YAML string that can be written to kamal-pull-preview.yml.
-    def self.example
-      <<~YAML
-        # Copy this to your project root as kamal-pull-preview.yml
-
-        # SSH host where preview containers will be deployed (required)
-        host: "preview.example.com"
-
-        # Base domain for preview URLs, e.g. pr-42.preview.example.com (required)
-        domain: "preview.example.com"
-
-        # Docker registry prefix used by Kamal (required)
-        registry: "registry.example.com/myorg/myapp"
-
-        # How many hours before an inactive preview is considered expired (default: 48)
-        ttl_hours: 48
-
-        # Minutes of inactivity before the container is stopped (default: 240)
-        idle_stop_minutes: 240
-
-        # Maximum number of concurrently running previews (default: 15)
-        max_concurrent: 15
-
-        # Database strategy: "none" | "sqlite" | "shared_schema" | "postgresql" (default: "none")
-        db_strategy: "none"
-
-        # Accessories strategy: "auto" (read from config/deploy.yml) | "none" | list (default: "auto")
-        # accessories: auto
-        # accessories: none
-        # accessories:
-        #   - redis
-        #   - postgres
-
-        # PostgreSQL settings (only required when db_strategy is "postgresql")
-        # pg_host: "db.example.com"
-        # pg_port: 5432
-        # pg_user: "preview_admin"
-        # pg_password: "secret"
-      YAML
-    end
-
     def self.normalize_accessories(value)
       case value
       when nil, "auto"
