@@ -22,6 +22,8 @@ module KamalPullPreview
       logger.info("Using registry: #{@config.registry}")
       logger.info("Repo context: #{repo}") if repo
 
+      accessories_manager_for(pr_number).boot_all
+
       # TODO: pass --version / image tag derived from sha when Kamal supports it
       Executor.execute("kamal", "deploy", "-d", "pr-#{Integer(pr_number)}")
 
@@ -36,6 +38,7 @@ module KamalPullPreview
     def remove(pr_number:)
       if destination_exists?(pr_number)
         Executor.execute("kamal", "remove", "-d", "pr-#{Integer(pr_number)}")
+        accessories_manager_for(pr_number).remove_all
         @generator.cleanup(pr_number: pr_number)
       else
         logger.warn("No destination file found for PR ##{pr_number}, skipping kamal remove")
@@ -60,6 +63,16 @@ module KamalPullPreview
     end
 
     private
+
+    def accessories_manager_for(pr_number)
+      reader = DeployConfigReader.new
+      AccessoriesManager.new(
+        accessories_config:  reader.accessories,
+        pr_number:           pr_number,
+        host:                @config.host,
+        accessories_setting: @config.accessories,
+      )
+    end
 
     def check_capacity!
       active_count = @state.all.count { |r| r["status"] == "active" }

@@ -12,6 +12,7 @@ module KamalPullPreview
       "idle_stop_minutes"    => 240,
       "max_concurrent"       => 15,
       "db_strategy"          => "none",
+      "accessories"          => "auto",
     }.freeze
 
     VALID_DB_STRATEGIES = %w[none sqlite shared_schema postgresql].freeze
@@ -23,6 +24,7 @@ module KamalPullPreview
       idle_stop_minutes
       max_concurrent
       db_strategy
+      accessories
       registry
       pg_host
       pg_port
@@ -59,6 +61,7 @@ module KamalPullPreview
         idle_stop_minutes:  data["idle_stop_minutes"].to_i,
         max_concurrent:     data["max_concurrent"].to_i,
         db_strategy:        data["db_strategy"].to_s.strip,
+        accessories:        normalize_accessories(data["accessories"]),
         registry:           data["registry"].to_s.strip,
         pg_host:            data["pg_host"].to_s.strip,
         pg_port:            (data["pg_port"] || 5432).to_i,
@@ -122,12 +125,32 @@ module KamalPullPreview
         # Database strategy: "none" | "sqlite" | "shared_schema" | "postgresql" (default: "none")
         db_strategy: "none"
 
+        # Accessories strategy: "auto" (read from config/deploy.yml) | "none" | list (default: "auto")
+        # accessories: auto
+        # accessories: none
+        # accessories:
+        #   - redis
+        #   - postgres
+
         # PostgreSQL settings (only required when db_strategy is "postgresql")
         # pg_host: "db.example.com"
         # pg_port: 5432
         # pg_user: "preview_admin"
         # pg_password: "secret"
       YAML
+    end
+
+    def self.normalize_accessories(value)
+      case value
+      when nil, "auto"
+        :auto
+      when "none"
+        :none
+      when Array
+        value.map(&:to_s)
+      else
+        :auto
+      end
     end
   end
 end
