@@ -65,6 +65,11 @@ module KamalPullPreview
       end
     end
 
+    # Returns true if the source is a local file path (no temp download needed).
+    def file_source?
+      source_type == :file
+    end
+
     # Inspects magic bytes (or directory status) to detect the dump format.
     # Returns one of: "custom", "plain", "directory", or "auto".
     def detect_format

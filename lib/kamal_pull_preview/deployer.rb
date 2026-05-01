@@ -13,6 +13,7 @@ module KamalPullPreview
     # Deploy a preview for the given PR.
     # Returns the preview URL string on success.
     def deploy(pr_number:, sha:, repo: nil)
+      validate_pr_number!(pr_number)
       check_capacity!
 
       @db_manager.setup(pr_number: pr_number)
@@ -57,6 +58,7 @@ module KamalPullPreview
     # Remove the preview for the given PR.
     # Cleans up both the Kamal destination and local state, even if one is missing.
     def remove(pr_number:)
+      validate_pr_number!(pr_number)
       if destination_exists?(pr_number)
         Executor.execute("kamal", "remove", "-d", "pr-#{Integer(pr_number)}")
         accessories_manager_for(pr_number).remove_all
@@ -85,6 +87,13 @@ module KamalPullPreview
     end
 
     private
+
+    def validate_pr_number!(pr_number)
+      num = Integer(pr_number)
+      raise DeployError, "PR number must be a positive integer, got: #{pr_number.inspect}" unless num.positive?
+    rescue ArgumentError
+      raise DeployError, "PR number must be a positive integer, got: #{pr_number.inspect}"
+    end
 
     def accessories_manager_for(pr_number)
       reader = DeployConfigReader.new

@@ -76,6 +76,28 @@ RSpec.describe KamalPullPreview::DumpFetcher do
     end
   end
 
+  describe "#file_source?" do
+    it "returns true for a bare file path" do
+      fetcher = described_class.new(source: "/tmp/dump.sql")
+      expect(fetcher.file_source?).to be true
+    end
+
+    it "returns false for s3://" do
+      fetcher = described_class.new(source: "s3://bucket/dump.sql")
+      expect(fetcher.file_source?).to be false
+    end
+
+    it "returns false for https://" do
+      fetcher = described_class.new(source: "https://example.com/dump.sql")
+      expect(fetcher.file_source?).to be false
+    end
+
+    it "returns false for cmd:" do
+      fetcher = described_class.new(source: "cmd:echo hello")
+      expect(fetcher.file_source?).to be false
+    end
+  end
+
   describe "#fetch" do
     context "with bare file path source" do
       subject(:fetcher) { described_class.new(source: "/var/backups/dump.sql") }

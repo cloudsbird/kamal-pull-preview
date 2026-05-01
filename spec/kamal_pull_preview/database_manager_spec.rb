@@ -248,7 +248,38 @@ RSpec.describe KamalPullPreview::DatabaseManager do
         allow_any_instance_of(KamalPullPreview::DumpFetcher).to receive(:available?).and_return(true)
         allow_any_instance_of(KamalPullPreview::DumpFetcher).to receive(:fetch).and_return("/tmp/dump.sql")
         allow_any_instance_of(KamalPullPreview::DumpFetcher).to receive(:detect_format).and_return("plain")
+        allow_any_instance_of(KamalPullPreview::DumpFetcher).to receive(:file_source?).and_return(false)
         expect { manager.restore_seed(pr_number: 42, destination_type: :none) }.not_to raise_error
+      end
+
+      it "cleans up the temp file for non-file sources" do
+        temp_file = Tempfile.new(["kpp-dump", ".dump"])
+        temp_file.write("dummy")
+        temp_file.close
+
+        allow_any_instance_of(KamalPullPreview::DumpFetcher).to receive(:available?).and_return(true)
+        allow_any_instance_of(KamalPullPreview::DumpFetcher).to receive(:fetch).and_return(temp_file.path)
+        allow_any_instance_of(KamalPullPreview::DumpFetcher).to receive(:detect_format).and_return("plain")
+        allow_any_instance_of(KamalPullPreview::DumpFetcher).to receive(:file_source?).and_return(false)
+
+        manager.restore_seed(pr_number: 42, destination_type: :none)
+        expect(File.exist?(temp_file.path)).to be false
+      end
+
+      it "does not delete the file for file sources" do
+        temp_file = Tempfile.new(["kpp-dump", ".dump"])
+        temp_file.write("dummy")
+        temp_file.close
+
+        allow_any_instance_of(KamalPullPreview::DumpFetcher).to receive(:available?).and_return(true)
+        allow_any_instance_of(KamalPullPreview::DumpFetcher).to receive(:fetch).and_return(temp_file.path)
+        allow_any_instance_of(KamalPullPreview::DumpFetcher).to receive(:detect_format).and_return("plain")
+        allow_any_instance_of(KamalPullPreview::DumpFetcher).to receive(:file_source?).and_return(true)
+
+        manager.restore_seed(pr_number: 42, destination_type: :none)
+        expect(File.exist?(temp_file.path)).to be true
+
+        temp_file.unlink
       end
     end
   end

@@ -10,7 +10,7 @@
 bundle exec rake spec
 ```
 
-All specs live under `spec/kamal_pull_preview/` and `spec/integration/`. The full suite currently contains 77+ examples.
+All specs live under `spec/kamal_pull_preview/` and `spec/integration/`. The full suite currently contains 120+ examples.
 
 ## Building the Gem
 

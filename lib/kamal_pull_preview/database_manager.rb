@@ -72,17 +72,21 @@ module KamalPullPreview
       dump_path        = fetcher.fetch
       effective_format = format == "auto" ? fetcher.detect_format : format
 
-      case destination_type
-      when :shared_schema
-        restore_to_shared_schema(pr_number: pr_number, dump_path: dump_path, format: effective_format)
-      when :accessory_postgres
-        restore_to_accessory_postgres(pr_number: pr_number, dump_path: dump_path, format: effective_format)
-      when :sqlite
-        restore_to_sqlite(pr_number: pr_number, dump_path: dump_path)
-      when :none
-        logger.warn("destination_type is :none, skipping seed restore for PR ##{pr_number}")
-      else
-        logger.warn("Unknown destination_type '#{destination_type}', skipping seed restore for PR ##{pr_number}")
+      begin
+        case destination_type
+        when :shared_schema
+          restore_to_shared_schema(pr_number: pr_number, dump_path: dump_path, format: effective_format)
+        when :accessory_postgres
+          restore_to_accessory_postgres(pr_number: pr_number, dump_path: dump_path, format: effective_format)
+        when :sqlite
+          restore_to_sqlite(pr_number: pr_number, dump_path: dump_path)
+        when :none
+          logger.warn("destination_type is :none, skipping seed restore for PR ##{pr_number}")
+        else
+          logger.warn("Unknown destination_type '#{destination_type}', skipping seed restore for PR ##{pr_number}")
+        end
+      ensure
+        FileUtils.rm_f(dump_path) unless fetcher.file_source?
       end
     end
 

@@ -66,6 +66,24 @@ RSpec.describe KamalPullPreview::Deployer do
 
       deployer.deploy(pr_number: 42, sha: "abc1234", repo: "owner/repo")
     end
+
+    it "raises DeployError for non-numeric PR number" do
+      expect {
+        deployer.deploy(pr_number: "abc", sha: "abc1234")
+      }.to raise_error(KamalPullPreview::DeployError, /PR number must be a positive integer/)
+    end
+
+    it "raises DeployError for negative PR number" do
+      expect {
+        deployer.deploy(pr_number: -1, sha: "abc1234")
+      }.to raise_error(KamalPullPreview::DeployError, /PR number must be a positive integer/)
+    end
+
+    it "raises DeployError for zero PR number" do
+      expect {
+        deployer.deploy(pr_number: 0, sha: "abc1234")
+      }.to raise_error(KamalPullPreview::DeployError, /PR number must be a positive integer/)
+    end
   end
 
   describe "#remove" do
@@ -100,6 +118,18 @@ RSpec.describe KamalPullPreview::Deployer do
       expect {
         deployer.remove(pr_number: 42)
       }.to raise_error(KamalPullPreview::DeployError, /kamal failed/)
+    end
+
+    it "raises DeployError for non-numeric PR number" do
+      expect {
+        deployer.remove(pr_number: "abc")
+      }.to raise_error(KamalPullPreview::DeployError, /PR number must be a positive integer/)
+    end
+
+    it "raises DeployError for negative PR number" do
+      expect {
+        deployer.remove(pr_number: -5)
+      }.to raise_error(KamalPullPreview::DeployError, /PR number must be a positive integer/)
     end
   end
 end
